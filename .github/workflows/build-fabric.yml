@@ -1,0 +1,23 @@
+name: Build Fabric jar
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build common, then the Fabric jar
+        run: |
+          chmod +x gradlew
+          ./gradlew :common:build
+          ./gradlew :fabric:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parcool-fabric-1.21.4
+          path: fabric/build/libs/parcool-fabric.jar

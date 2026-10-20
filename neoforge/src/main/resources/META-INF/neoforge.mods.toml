@@ -1,0 +1,92 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "LGPL-3.0"
+LicenseFile = "LICENSE"
+issueTrackerURL = "https://github.com/alRex-U/ParCool/issues"
+
+[[mods]]
+modId = "parcool"
+version = "${mod_version}"
+displayName = "ParCool!"
+displayURL = "https://www.curseforge.com/minecraft/mc-mods/parcool"
+logoFile = "parcool_logo.png"
+authors = "alRex_U (original), ParCool Architectury API port"
+description = '''
+    This enable us act like parkour players.
+    Enjoy Minecraft with cool actions!
+'''
+
+[[mixins]]
+config = "parcool-common.mixins.json"
+
+[[accessTransformers]]
+file = "META-INF/accesstransformer.cfg"
+
+[[dependencies.parcool]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.4.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.parcool]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.4,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.parcool]]
+modId = "architectury"
+type = "required"
+versionRange = "[15.0.3,)"
+ordering = "AFTER"
+side = "BOTH"
+
+# Optional integrations. Their code lives in the neoforge source set; on Fabric the platform
+# implementation reports them as absent.
+[[dependencies.parcool]]
+modId = "paraglider"
+type = "optional"
+versionRange = "[21.4.0,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.parcool]]
+modId = "epicfight"
+type = "optional"
+versionRange = "*"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.parcool]]
+modId = "betterthirdperson"
+type = "optional"
+versionRange = "[1.9.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.parcool]]
+modId = "shouldersurfing"
+type = "optional"
+versionRange = "[1.21.4-5.0.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+# PlayerMixin uses llamalad7's @WrapWithCondition. MixinExtras is *bundled inside* both loaders rather
+# than shipped as a mod, so it has to stay optional: declaring it required makes NeoForge refuse to
+# start with "Mod parcool requires mixinextras 0.4 or above", because the loader never lists it as a
+# mod. The entry documents the requirement without turning it into a load-time dependency.
+[[dependencies.parcool]]
+modId = "mixinextras"
+type = "optional"
+versionRange = "[0.4,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.parcool]]
+modId = "patchouli"
+type = "optional"
+versionRange = "*"
+ordering = "AFTER"
+side = "BOTH"

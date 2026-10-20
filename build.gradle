@@ -1,0 +1,64 @@
+plugins {
+	id 'java-library'
+	id 'architectury-plugin'
+}
+
+architectury {
+	minecraft = project.minecraft_version
+}
+
+base {
+	archivesName = project.archives_base_name
+}
+
+version = "${project.minecraft_version}-${project.mod_version}"
+group = project.maven_group
+
+repositories {
+	maven { url = 'https://maven.blamejared.com' }
+	maven { url = 'https://www.cursemaven.com' }
+	maven { url = 'https://maven.architectury.dev/' }
+	mavenCentral()
+}
+
+subprojects {
+	apply plugin: 'java'
+	apply plugin: 'architectury-plugin'
+
+	// Must be set before architectury-plugin names the transform outputs, otherwise the
+	// transformProductionForge / transformProductionFabric artifacts are named after the Gradle
+	// project ("common") instead of the mod ("parcool") and Loom cannot find them.
+	base {
+		archivesName = project.archives_base_name
+	}
+
+	java {
+		toolchain {
+			languageVersion = JavaLanguageVersion.of(21)
+		}
+		withSourcesJar()
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		it.options.encoding = 'UTF-8'
+		it.options.release = 21
+		it.options.compilerArgs << '-Xmaxerrs' << '5000'
+	}
+}
+
+/**
+ * Architectury Loom resolves the `:common` project dependency while *configuring* the loader
+ * modules, so on a fresh checkout `:common`'s jar has to exist before `build` can configure them.
+ * `./gradlew build` therefore runs this bootstrap first: it is a no-op once `:common` is built, and
+ * on a clean checkout the very first invocation has to be `./gradlew :common:build` (documented in
+ * BUILDING.md).
+ */
+tasks.register('bootstrap') {
+	group = 'build'
+	description = 'Builds :common so the loader modules can be configured.'
+	dependsOn ':common:build'
+}
+
+tasks.named('build') {
+	dependsOn 'bootstrap'
+}

@@ -1,0 +1,30 @@
+pluginManagement {
+	repositories {
+		maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+		maven { name = 'Architectury'; url = 'https://maven.architectury.dev/' }
+		maven { name = 'NeoForged'; url = 'https://maven.neoforged.net/releases/' }
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+plugins {
+	// Loom has to be 1.17.x here, even though 1.10.x is the line contemporary with 1.21.4, and the
+	// reason is architectury-plugin, not Minecraft: 3.5.170 is the newest architectury-plugin published
+	// (https://maven.architectury.dev/architectury-plugin/architectury-plugin.gradle.plugin/maven-metadata.xml)
+	// and it calls LloomGradleExtension#disableObfuscation(), which only exists in Loom 1.17.x. With
+	// Loom 1.7.435 the build stops earlier still, because architectury-fabric 16.1.4 was built with
+	// Loom 1.10.1 and Loom refuses to set up a mod built with a newer Loom than its own:
+	//     Mod was built with a newer version of Loom (1.10.1), you are using Loom (1.7.435)
+	// 1.17.493 is above 1.10.1, so the mod check passes.
+	id 'dev.architectury.loom' version '1.17.493' apply false
+	id 'architectury-plugin' version '3.5.170' apply false
+	// ModDevGradle 1.0.x is the line built for NeoForge 21.1 - 21.4; 2.x is the 21.5+ line.
+	id 'net.neoforged.moddev' version '1.0.9' apply false
+}
+
+rootProject.name = 'parcool-architectury'
+
+include 'common'
+include 'fabric'
+include 'neoforge'

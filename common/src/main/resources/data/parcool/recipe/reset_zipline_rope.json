@@ -1,0 +1,10 @@
+{
+  "type": "crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "parcool:zipline_rope"
+  ],
+  "result": {
+    "id": "parcool:zipline_rope"
+  }
+}

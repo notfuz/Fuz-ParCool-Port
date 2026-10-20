@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "nIn",
+    " h "
+  ],
+  "key": {
+    "n": "minecraft:iron_nugget",
+    "I": "minecraft:iron_ingot",
+    "h": "minecraft:tripwire_hook"
+  },
+  "result": {
+    "id": "parcool:iron_zipline_hook",
+    "count": 1
+  }
+}

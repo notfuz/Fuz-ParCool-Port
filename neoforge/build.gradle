@@ -1,0 +1,232 @@
+plugins {
+	id 'architectury-plugin'
+	id 'net.neoforged.moddev'
+}
+
+// architectury-plugin registers :common's `transformProduction*` tasks while evaluating :common, and
+// this module references them below, so :common has to be evaluated first.
+evaluationDependsOn(':common')
+
+// NOTE: architectury-plugin's `neoForge()` transform is intentionally not declared. It requires a Loom
+// extension in this project, and a Loom-based NeoForge setup aborts while merging the Mojang and
+// NeoForge mappings (`RuntimeException: Unfixable conflicts` on 1.7.x, i.e. the 1.21.1 line). The
+// ModDevGradle toolchain is what this tree uses - it is also what upstream ParCool 3.4.3.3 uses - and
+// the distributable below is assembled explicitly instead.
+//
+// The step architectury-plugin would have done is a mojmap -> SRG remap, and it is not needed: the
+// NeoForge production runtime loads mojmap-named vanilla members. Verified against a shipped NeoForge
+// 1.21.11 mod (Paraglider 21.11.0-beta.6), whose own bytecode references
+// `net/minecraft/resources/Identifier` and whose own accesstransformer.cfg ships
+// `aboveGroundTickCount` rather than an `f_110147_` token. So the mojmap-named artifact this module
+// produces is already what NeoForge loads, and the access transformer in
+// neoforge/src/main/resources/META-INF/accesstransformer.cfg is written in the same naming.
+
+repositories {
+	maven { url = 'https://www.cursemaven.com' }
+	maven { url = 'https://maven.blamejared.com' }
+	maven { url = 'https://maven.architectury.dev/' }
+	mavenCentral()
+	maven { url = 'https://maven.neoforged.net/releases/' }
+	// The two Mojang-side repositories, spelled out rather than left to ModDevGradle.
+	//
+	// ModDevGradle 1.0.x has an internal RepositoriesPlugin that adds exactly these two, but it never
+	// runs on Gradle 9 - which this tree needs, because architectury-plugin 3.5.170 calls
+	// LloomGradleExtension#disableObfuscation(), and that method only exists in Architectury Loom
+	// 1.17.x. Without them, resolving NeoForge's own `neoFormRuntimeDependenciesCompileClasspath`
+	// fails with "Could not find com.mojang:jtracy:1.0.29" and only lists the five repositories above
+	// as searched.
+	maven {
+		name = 'Mojang Minecraft Libraries'
+		url = 'https://libraries.minecraft.net/'
+		content { includeGroup 'com.mojang' }
+	}
+	maven {
+		name = 'Mojang Meta'
+		url = 'https://maven.neoforged.net/mojang-meta/'
+	}
+}
+
+neoForge {
+	version = project.neo_version
+
+	runs {
+		client {
+			client()
+			// Same as the server run: mixin.debug makes the dev log list every applied ParCool mixin,
+			// which is how the client half of the mixin set is verified.
+			jvmArguments.addAll '-Dmixin.debug=true', '-Dmixin.debug.verbose=true'
+			// `./gradlew :neoforge:runClient -PparcoolQuickPlay=host:port` boots straight into a server,
+			// which is how a cross-loader join is reproduced without a mouse. See
+			// BUILDING.md; the same property drives :fabric:runClient.
+			if (project.hasProperty('parcoolQuickPlay')) {
+				programArguments.addAll '--quickPlayMultiplayer', project.property('parcoolQuickPlay').toString()
+			}
+			if (project.hasProperty('parcoolQuickPlayWorld')) {
+				programArguments.addAll '--quickPlaySingleplayer', project.property('parcoolQuickPlayWorld').toString()
+			}
+		}
+		client2 {
+			client()
+			// A second client with its own game directory and a fixed name, so two ParCool players can
+			// be on one NeoForge server at the same time - that is what exercises the action-state
+			// broadcast path (ActionStateBroadcastPayload / ActionStatePayload) between two players.
+			gameDirectory = project.file('run-client2')
+			programArguments.addAll '--username',
+					project.findProperty('parcoolUsername2') ?: 'NeoParCool2'
+			jvmArguments.addAll '-Dmixin.debug=true', '-Dmixin.debug.verbose=true'
+			if (project.hasProperty('parcoolQuickPlay')) {
+				programArguments.addAll '--quickPlayMultiplayer', project.property('parcoolQuickPlay').toString()
+			}
+		}
+		server {
+			server()
+			programArguments.addAll '--nogui'
+			// Its own game directory so a dev server can run next to a dev client (ModDevGradle
+			// defaults both to <module>/run, and the two would fight over saves, logs and options).
+			gameDirectory = project.file('run-server')
+			// mixin.debug makes the dev log list every applied ParCool mixin, which is how the
+			// port's mixin set is verified without launching a client.
+			jvmArguments.addAll '-Dmixin.debug=true', '-Dmixin.debug.verbose=true'
+		}
+	}
+
+	mods {
+		"${project.mod_id}" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+// Paraglider and EpicFight ship their own Minecraft mappings. Putting them on the resolvable
+// compile/runtime classpath makes Loom merge those mappings into :common and abort with
+// "Mapping source name conflicts detected". They are therefore kept in an isolated, resolvable-only
+// configuration that is appended to :neoforge's own compile classpath and runtime classpath.
+configurations {
+	parcoolIntegrationsCompile {
+		canBeConsumed = false
+		canBeResolved = true
+	}
+	parcoolIntegrationsRuntime {
+		canBeConsumed = false
+		canBeResolved = true
+	}
+}
+
+dependencies {
+	// architectury-plugin's NeoForge transform output is named `<archivesName>-transformProductionNeoForge.jar`
+	// (no version component), which no project-dependency notation can address, so it is wired as a
+	// file with an explicit task dependency.
+	implementation files(
+			project(':common').tasks.named('transformProductionNeoForge').flatMap { it.archiveFile }
+	)
+	implementation "dev.architectury:architectury-neoforge:${project.architectury_api_version}"
+	compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+	// mixin.extras is bundled by both loaders at runtime, but PlayerMixin compiles against its
+	// annotations, so the compile classpath needs the artifact explicitly. Kept out of the *dist* jar:
+	// shipping a second copy of MixinExtras is what the loaders' bundled one would conflict with.
+	compileOnly "io.github.llamalad7:mixinextras-common:0.4.1"
+
+	// Optional integrations. None of the four is a *runtime* dependency of the mod: each one reports
+	// itself absent when its classes are not loadable, so a client without them still works, and the
+	// ids below only have to be good enough to compile against. Verified against the CurseForge file
+	// listing (www.curseforge.com/api/v1/mods/<id>/files):
+	//   Paraglider        289240  7795089  Paraglider-neoforge-21.1.5        (MC 1.21.1)
+	//   EpicFight         405076  8175609  epic-fight-21.17.3.1-mc1.21.1    (MC 1.21.1)
+	//   BetterThirdPerson 435044  5965876  BetterThirdPerson-neoforge-1.9.0 (MC 1.21.4, exact)
+	//   ShoulderSurfing   243190  6543497  ShoulderSurfing-NeoForge-1.21.4-4.12.0 (MC 1.21.4, exact)
+	//
+	// Paraglider and EpicFight publish no 1.21.4 build, so both are compiled against their 1.21.1
+	// build. The APIs ParCool touches (`Paraglider.playerStates()`, EpicFight's
+	// `getPlayerPatch()`) are unchanged across those builds.
+	// Patchouli is only an optional book dependency and is never referenced from source.
+	parcoolIntegrationsCompile "curse.maven:paraglider-289240:7795089"
+	parcoolIntegrationsCompile "curse.maven:EpicFight-405076:8175609"
+	parcoolIntegrationsCompile "curse.maven:BetterThirdPerson-435044:5965876"
+	parcoolIntegrationsCompile "curse.maven:ShoulderSurfing-243190:6543497"
+
+	parcoolIntegrationsRuntime "curse.maven:paraglider-289240:7795089"
+}
+
+tasks.named('compileJava') {
+	classpath += configurations.parcoolIntegrationsCompile
+}
+
+tasks.named('neoForgeIdeSync') {
+	// present on ModDevGradle 1.0.x; ignored when absent
+}
+
+/**
+ * The distributable NeoForge jar: the mojmap-named :common artifact plus this module's own
+ * classes, the loader metadata and the ServiceLoader registration.
+ *
+ * architectury-plugin's `neoForge()` transform normally does this, but it requires a Loom extension
+ * in this project and `dev.architectury.loom` 1.7.x cannot set up NeoForge 21.1 (it aborts with
+ * `RuntimeException: Unfixable conflicts` while merging the Mojang and NeoForge mappings), so the
+ * assembly is done explicitly here, mirroring :fabric.
+ */
+// The access widener and the mixin config live in :common so both loaders ship the same copy. The
+// dev runtime loads this module from its own sourceSet output, so the files have to be present here
+// as well (the distributed jar picks them up from the :common transform artifact).
+// Explodes the mojmap-named :common artifact so its classes are part of this module's own output.
+def explodedCommon = layout.buildDirectory.dir('explodedCommon')
+
+def explodeCommon = tasks.register('explodeCommon', Copy) {
+	duplicatesStrategy = DuplicatesStrategy.INCLUDE
+	dependsOn ':common:transformProductionNeoForge'
+	from { zipTree(project(':common').tasks.named('transformProductionNeoForge').get().archiveFile) }
+	into explodedCommon
+}
+
+sourceSets.main.output.dir(explodedCommon, builtBy: explodeCommon)
+
+processResources {
+	from(project(':common').file('src/main/resources/parcool.accesswidener'))
+	from(project(':common').file('src/main/resources/parcool-common.mixins.json'))
+	// neoforge.mods.toml points LicenseFile at the LGPL text, so it has to be inside the jar.
+	from(rootProject.file('LICENSE'))
+}
+
+processResources {
+	def props = [
+			mod_version    : project.mod_version,
+			mod_name       : project.mod_name,
+			mod_authors    : project.mod_authors,
+			mod_license    : project.mod_license,
+			minecraft_version: project.minecraft_version,
+	]
+	inputs.properties props
+	filesMatching('META-INF/neoforge.mods.toml') { expand props }
+}
+
+tasks.register('distJar', Jar) {
+	group = 'build'
+	description = 'Assembles the distributable NeoForge jar (common + neoforge module).'
+
+	archiveClassifier = 'neoforge'
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+	// zipTree, not a plain file copy, so the common code is expanded into the output jar.
+	from({
+		zipTree(project(':common').tasks.named('transformProductionNeoForge').get().archiveFile.get().asFile)
+	})
+	from(sourceSets.main.output)
+	from(configurations.parcoolIntegrationsRuntime.findAll { it.name.endsWith('.jar') }.collect { zipTree(it) }) {
+		include 'META-INF/services/com.alrex.parcool.platform.ParCoolPlatform'
+	}
+
+	manifest {
+		attributes(
+				'Implementation-Title': project.mod_name,
+				'Implementation-Version': project.mod_version,
+				'Implementation-Vendor': project.mod_authors
+		)
+	}
+}
+
+tasks.named('assemble') {
+	dependsOn 'distJar'
+}
+
+tasks.withType(Jar).configureEach {
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

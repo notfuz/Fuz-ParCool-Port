@@ -1,0 +1,108 @@
+plugins {
+	id 'architectury-plugin'
+	id 'dev.architectury.loom'
+}
+
+architectury {
+	minecraft = project.minecraft_version
+	// Declares :common as the shared module and the platforms it is consumed from. architectury-plugin
+	// creates the `transformProductionFabric` / `transformProductionForge` artifacts from this.
+	common('fabric', 'neoforge')
+}
+
+group = project.maven_group
+version = "${project.minecraft_version}-${project.mod_version}"
+
+repositories {
+	maven { url = 'https://www.cursemaven.com' }
+	maven { url = 'https://maven.blamejared.com' }
+	maven { url = 'https://maven.architectury.dev/' }
+	mavenCentral()
+}
+
+loom {
+	// NOTE: source-set split is intentionally OFF. ParCool is client-authoritative by design:
+	// `common/src/main` keeps a single tree holding Action/KeyRecorder/Animation, exactly like the
+	// upstream NeoForge mod. NeoForge ships a merged jar so those classes resolve; on a dedicated
+	// Fabric server they stay on the classpath unresolvable and are never loaded, because every
+	// entry point is guarded by `Platform.getEnvironment() == Env.CLIENT`.
+	//
+	// The same reasoning applies to the mixin config: one `parcool-common.mixins.json` is shipped in
+	// the common jar and referenced by both platform mod metadata files.
+	accessWidenerPath = file('src/main/resources/parcool.accesswidener')
+
+	mixin {
+		defaultRefmapName = 'parcool-common-refmap.json'
+		// NOTE: there is deliberately no `useLegacyMixinAp = false` here. That flag only existed on
+		// Loom 1.7/1.8, and this tree is on Loom 1.17 (see settings.gradle for why the version is
+		// forced). Loom >= 1.9 defaults to the static remapping the flag used to request: the
+		// annotation strings, the @Shadow descriptors and the @Mixin targets are rewritten straight
+		// into the bytecode, so the jar is self-contained and carries no refmap - which is why
+		// fabric.mod.json must not reference one either.
+	}
+
+	mods {
+		"${project.mod_id}" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings loom.officialMojangMappings()
+
+	// Architectury common API: events, registries, networking, platform helpers.
+	modImplementation "dev.architectury:architectury:${project.architectury_api_version}"
+
+	// Upstream uses javax.annotation.Nullable/Nonnull throughout; NeoForge puts JSR-305 on the
+	// compile classpath for free, Loom/ModDevGradle do not.
+	compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+	// PlayerMixin uses llamalad7's @WrapWithCondition; both loaders bundle MixinExtras at runtime.
+	compileOnly "io.github.llamalad7:mixinextras-common:0.4.1"
+	// The config layer is backed by Gson, which the game ships at runtime.
+	compileOnly "com.google.code.gson:gson:2.10.1"
+
+	// ShoulderSurfing is genuinely multiloader, so its plugin API stays in :common.
+	// runtimeOnly in the loader modules so an absent ShoulderSurfing is not a hard dependency.
+	// 6543497 is ShoulderSurfing-NeoForge-1.21.4-4.12.0: a build made for this Minecraft version, and
+	// the NeoForge one because it ships mojmap names (the Fabric build is intermediary-named, and a
+	// plain `compileOnly` Maven dependency is not remapped by Loom).
+	compileOnly "curse.maven:ShoulderSurfing-243190:6543497"
+}
+
+def LOADER_IMPORT_PATTERNS = [
+		~/^net\.fabricmc\./,
+		~/^net\.neoforged\./,
+		~/^net\.minecraftforge\./,
+]
+
+/**
+ * Guard rail for the multiloader split: `common` must not reference loader specific packages.
+ * Everything platform specific has to live in the `fabric` / `neoforge` subprojects.
+ */
+tasks.register('checkCommonLoaderIndependence') {
+	description = 'Fails if common/src/main imports net.fabricmc.* or net.neoforged.*'
+	group = 'verification'
+	def srcDirs = sourceSets.main.allJava
+	doLast {
+		def report = []
+		srcDirs.files.each { f ->
+			f.readLines('UTF-8').eachWithIndex { line, idx ->
+				def m = line =~ /^\s*import\s+(?:static\s+)?([\w.$]+)\s*;/
+				if (m.find()) {
+					def imp = m.group(1)
+					if (LOADER_IMPORT_PATTERNS.any { imp =~ it }) {
+						report << "${f.name}:${idx + 1}: ${imp}"
+					}
+				}
+			}
+		}
+		if (!report.isEmpty()) {
+			throw new GradleException(
+					"common/src/main must stay loader-agnostic. Loader specific imports found:\n  " + report.join('\n  '))
+		}
+	}
+}
+
+tasks.named('check').configure { dependsOn 'checkCommonLoaderIndependence' }

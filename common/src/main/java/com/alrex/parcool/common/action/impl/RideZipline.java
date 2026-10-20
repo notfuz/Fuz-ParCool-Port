@@ -1,0 +1,246 @@
+package com.alrex.parcool.common.action.impl;
+
+import com.alrex.parcool.client.animation.impl.RideZiplineAnimator;
+import com.alrex.parcool.client.input.KeyBindings;
+import com.alrex.parcool.client.input.KeyRecorder;
+import com.alrex.parcool.client.sound.ZiplineRideSound;
+import com.alrex.parcool.common.action.Action;
+import com.alrex.parcool.common.action.BehaviorEnforcer;
+import com.alrex.parcool.common.action.StaminaConsumeTiming;
+import com.alrex.parcool.common.data.ParCoolDataKeys;
+import com.alrex.parcool.common.data.client.Animation;
+import com.alrex.parcool.common.data.Parkourability;
+import com.alrex.parcool.common.entity.zipline.ZiplineRopeEntity;
+import com.alrex.parcool.common.zipline.Zipline;
+import com.alrex.parcool.utilities.BufferUtil;
+import com.alrex.parcool.utilities.VectorUtil;
+import javax.annotation.Nullable;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.client.player.LocalPlayer;
+import java.nio.ByteBuffer;
+
+public class RideZipline extends Action {
+    private static final BehaviorEnforcer.ID ID_FALL_FLY_CANCEL = BehaviorEnforcer.newID();
+    private static final BehaviorEnforcer.ID ID_SPRINT_CANCEL = BehaviorEnforcer.newID();
+    @Nullable
+    private ZiplineRopeEntity ridingZipline;
+    @Nullable
+    private Vec3 endOffsetFromStart;
+    private double speed;
+    private double acceleration;
+    private double slope;
+    private float currentT;
+    @Nullable
+    private Vec3 currentPos;
+    private boolean previouslyStopByCollision = false;
+
+    public double getAcceleration() {
+        return acceleration;
+    }
+
+    public double getSlope() {
+        return slope;
+    }
+
+    @Nullable
+    public Vec3 getEndOffsetFromStart() {
+        return endOffsetFromStart;
+    }
+
+    @Override
+    public boolean canStart(Player player, Parkourability parkourability, ByteBuffer startInfo) {
+        return canStartInner(player, parkourability, startInfo);
+    }
+
+    private boolean canStartInner(Player player, Parkourability parkourability, ByteBuffer startInfo) {
+        if (KeyBindings.isDown(KeyBindings.getKeyRideZipline())
+                && !player.onGround()
+                && !player.isInWater()
+                && !player.isFallFlying()
+                && !player.isCrouching()
+                && !player.isSwimming()
+                && (!KeyBindings.isKeyJumpDown() || getNotDoingTick() > 5)
+                && (!previouslyStopByCollision || getNotDoingTick() > 5)
+                && !parkourability.get(Vault.class).isDoing()
+                && !parkourability.get(HangDown.class).isDoing()
+                && !parkourability.get(Flipping.class).isDoing()
+                && !parkourability.get(HorizontalWallRun.class).isDoing()
+                && !parkourability.get(VerticalWallRun.class).isDoing()
+        ) {
+            ZiplineRopeEntity ropeEntity = Zipline.getHangableZipline(player.level(), player);
+            if (ropeEntity == null) return false;
+            double t = ropeEntity.getZipline().getParameter(player.position());
+            if (t < 0 || 1 < t) return false;
+            ridingZipline = ropeEntity;
+            BufferUtil.wrap(startInfo).putVec3(ridingZipline.getZipline().getOffsetToEndFromStart());
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean canContinue(Player player, Parkourability parkourability) {
+        if (player.horizontalCollision || player.verticalCollision) {
+            previouslyStopByCollision = true;
+            return false;
+        }
+        return KeyBindings.isDown(KeyBindings.getKeyRideZipline())
+                && !KeyRecorder.keyJumpState.isPressed()
+                && !player.isInWall()
+                && !ParCoolDataKeys.getStamina(player).isExhausted()
+                && ridingZipline != null
+                && ridingZipline.isAlive()
+                && 0 <= currentT && currentT <= 1;
+    }
+
+    @Override
+    public void onStartInLocalClient(Player player, Parkourability parkourability, ByteBuffer startData) {
+        if (ridingZipline != null) {
+            rideNewZipline(ridingZipline, player.position(), player.getDeltaMovement());
+        }
+        player.setSprinting(false);
+
+        parkourability.getBehaviorEnforcer().setMarkerEnforceMovePoint(
+                this::isDoing,
+                () -> {
+                    if (currentPos == null) return null;
+                    return currentPos.subtract(0, player.getBbHeight() * 1.11, 0);
+                }
+        );
+        parkourability.getBehaviorEnforcer().addMarkerCancellingSprint(ID_SPRINT_CANCEL, this::isDoing);
+        Animation animation = Animation.get(player);
+        if (animation != null) {
+            animation.setAnimator(RideZiplineAnimator.class);
+        }
+        // Last, and unconditionally: the sound must never be able to keep the ride itself from
+        // starting. Started after rideNewZipline so the loop gets the real entry speed.
+        ZiplineRideSound.start(player, speed);
+    }
+
+    @Override
+    public void onStartInOtherClient(Player player, Parkourability parkourability, ByteBuffer startData) {
+        Animation animation = Animation.get(player);
+        if (animation == null) return;
+        animation.setAnimator(RideZiplineAnimator.class);
+    }
+
+    @Override
+    public void onStart(Player player, Parkourability parkourability, ByteBuffer startData) {
+        previouslyStopByCollision = false;
+        endOffsetFromStart = BufferUtil.getVec3(startData);
+        player.setSprinting(false);
+        parkourability.getBehaviorEnforcer().addMarkerCancellingFallFlying(ID_FALL_FLY_CANCEL, this::isDoing);
+    }
+
+    @Override
+    public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
+        if (ridingZipline == null) return;
+        var speedAttr = player.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttr == null) return;
+        if (!(player instanceof LocalPlayer localPlayer)) return;
+        // null for a tick or two around a respawn / mount / dimension change.
+        if (localPlayer.input == null) return;
+        double oldSpeed = speed;
+        Zipline zipline = ridingZipline.getZipline();
+
+        double gravity = player.getAttributeValue(Attributes.GRAVITY);
+        slope = zipline.getSlope(currentT);
+        speed *= 0.98;
+        if (player.isInWater()) speed *= 0.8;
+        speed -= gravity * slope * (Mth.invSqrt(slope * slope + 1));
+        Vec3 input = new Vec3(-localPlayer.input.leftImpulse, 0., localPlayer.input.forwardImpulse);
+        Vec3 offset = zipline.getOffsetToEndFromStart();
+        if (input.lengthSqr() > 0.01) {
+            double dot = player.getLookAngle()
+                    .yRot((float) Math.toRadians(VectorUtil.toYawDegree(input)))
+                    .multiply(1, 0, 1)
+                    .normalize()
+                    .dot(new Vec3(offset.x(), 0, offset.z()).normalize());
+            speed += Math.min(dot * 0.01 * (speedAttr.getValue() / speedAttr.getBaseValue()), 0.08);
+        }
+        currentT = (float) zipline.getMovedPositionByParameterApproximately(currentT, (float) speed);
+        acceleration = speed - oldSpeed;
+        currentPos = zipline.getMidPoint(currentT);
+        ZiplineRideSound.update(speed);
+    }
+
+    private void rideNewZipline(ZiplineRopeEntity ziplineRopeEntity, Vec3 position, Vec3 deltaMovement) {
+        ridingZipline = ziplineRopeEntity;
+        Zipline zipline = ziplineRopeEntity.getZipline();
+        acceleration = 0;
+        currentT = Mth.clamp(zipline.getParameter(position), 0, 1);
+        currentPos = zipline.getMidPoint(currentT);
+        slope = zipline.getSlope(currentT);
+        Vec3 speedScale;
+        {
+            float yScale = (float) slope;
+            Vec3 pointsOffset = zipline.getOffsetToEndFromStart();
+            double xzLenInvSqrt = Mth.fastInvSqrt(pointsOffset.x() * pointsOffset.x() + pointsOffset.z() * pointsOffset.z());
+            double xScale = pointsOffset.x() * xzLenInvSqrt;
+            double zScale = pointsOffset.z() * xzLenInvSqrt;
+            speedScale = new Vec3(xScale, yScale, zScale).normalize();
+        }
+        speed = deltaMovement.dot(speedScale);
+    }
+
+    private static Vec3 getDeltaMovement(Zipline zipline, double speed, float currentT) {
+        Vec3 speedScale;
+        {
+            float yScale = zipline.getSlope(currentT);
+            Vec3 pointsOffset = zipline.getOffsetToEndFromStart();
+            double xzLenInvSqrt = Mth.fastInvSqrt(pointsOffset.x() * pointsOffset.x() + pointsOffset.z() * pointsOffset.z());
+            double xScale = pointsOffset.x() * xzLenInvSqrt;
+            double zScale = pointsOffset.z() * xzLenInvSqrt;
+            speedScale = new Vec3(xScale, yScale, zScale).normalize();
+        }
+        return speedScale.scale(speed);
+    }
+
+    @Override
+    public void saveSynchronizedState(ByteBuffer buffer) {
+        buffer.putDouble(acceleration);
+        buffer.putDouble(slope);
+    }
+
+    @Override
+    public void restoreSynchronizedState(ByteBuffer buffer) {
+        acceleration = buffer.getDouble();
+        slope = buffer.getDouble();
+    }
+
+    @Override
+    public void onWorkingTick(Player player, Parkourability parkourability) {
+        player.fallDistance = 0;
+        player.setDeltaMovement(Vec3.ZERO);
+    }
+
+    @Override
+    public void onStopInLocalClient(Player player) {
+        ZiplineRideSound.stop();
+        if (ridingZipline != null) {
+            player.setDeltaMovement(
+                    getDeltaMovement(ridingZipline.getZipline(), speed, currentT)
+                            .add(0, KeyBindings.isKeyJumpDown() ? 0.25 : 0, 0)
+            );
+        }
+        currentT = 0;
+        currentPos = null;
+        acceleration = 0;
+        speed = 0;
+        slope = 0;
+    }
+
+
+    @Override
+    public void onStop(Player player) {
+        ridingZipline = null;
+    }
+
+    @Override
+    public StaminaConsumeTiming getStaminaConsumeTiming() {
+        return StaminaConsumeTiming.OnWorking;
+    }
+}

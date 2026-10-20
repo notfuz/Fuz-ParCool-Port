@@ -1,0 +1,220 @@
+plugins {
+	id 'architectury-plugin'
+	id 'dev.architectury.loom'
+}
+
+// architectury-plugin registers :common's `transformProduction*` tasks while evaluating :common, and
+// both loader modules reference them below, so :common has to be evaluated first.
+evaluationDependsOn(':common')
+
+// Gradle leaves an undeclared project version at "unspecified", and processResources expands
+// ${version} into fabric.mod.json from it - so the shipped mod metadata said `"version": "unspecified"`
+// and Fabric Loader warned on every launch:
+//   Mod parcool uses the version unspecified which isn't compatible with Loader's extended semantic
+//   version format
+// :common sets the same value; mirror it so the loader metadata, the jar manifest and the module all
+// agree with gradle.properties.
+version = "${project.minecraft_version}-${project.mod_version}"
+group = project.maven_group
+
+architectury {
+	platformSetupLoomIde()
+	fabric()
+}
+
+loom {
+	// The access widener lives in :common resources; Loom needs a concrete file to apply it.
+	accessWidenerPath = project(':common').file('src/main/resources/parcool.accesswidener')
+
+	mods {
+		"${project.mod_id}" {
+			sourceSet sourceSets.main
+		}
+	}
+
+	runs {
+		// A second client with its own game directory and a fixed name, so two ParCool players can be
+		// on one server at the same time - that is what exercises the action-state broadcast path
+		// (ActionStateBroadcastPayload / ActionStatePayload) between two real players.
+		client2 {
+			client()
+			runDir = project.file('run-client2')
+			programArgs '--username', project.findProperty('parcoolUsername2') ?: 'ParCoolTester2'
+		}
+	}
+}
+
+// The access widener and the mixin config live in :common so both loaders ship the same copy; the
+// Fabric module only needs them present in its own jar, because fabric.mod.json references them.
+processResources {
+	// neoforge.mods.toml points LicenseFile at the LGPL text, so it has to be inside both jars.
+	from(rootProject.file('LICENSE'))
+}
+
+tasks.named('processResources') {
+	def props = [
+			version            : project.version,
+			mod_id             : project.mod_id,
+			mod_name           : project.mod_name,
+			mod_license        : project.mod_license,
+			mod_authors        : project.mod_authors,
+			minecraft_version  : project.minecraft_version,
+			neo_version        : project.neo_version,
+	]
+	inputs.properties props
+	filesMatching('fabric.mod.json') { expand props }
+}
+
+// mixin.debug makes the dev log list every applied ParCool mixin (see neoforge/build.gradle).
+['runClient', 'runClient2', 'runServer'].each { runTask ->
+	tasks.named(runTask) {
+		it.jvmArgs '-Dmixin.debug=true', '-Dmixin.debug.verbose=true'
+		// `./gradlew :fabric:runClient -PparcoolQuickPlay=host:port` boots straight into a server, and
+		// `-PparcoolQuickPlayWorld=<name>` into a saved world; both are how the cross-loader join
+		// a cross-loader join and the in-world render pass are reproduced without a mouse.
+		if (runTask.startsWith('runClient') && project.hasProperty('parcoolQuickPlay')) {
+			it.args '--quickPlayMultiplayer', project.property('parcoolQuickPlay').toString()
+		}
+		if (runTask == 'runClient' && project.hasProperty('parcoolQuickPlayWorld')) {
+			it.args '--quickPlaySingleplayer', project.property('parcoolQuickPlayWorld').toString()
+		}
+	}
+}
+
+// Architectury Loom hands the fabric module the remapped :common *jar*, which carries no
+// fabric.mod.json, so Fabric Loader does not treat its assets as mod resources. The common resource
+// root is therefore added to this module as well; the distributed jar gets them from the
+// transformProductionFabric artifact either way.
+sourceSets.main.resources.srcDir project(':common').file('src/main/resources')
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	// architectury-fabric declares fabric-api as a HARD (scope=runtime, non-optional) dependency and
+	// Gradle resolves the conflict with "highest wins", so an Architectury that asks for a fabric-api
+	// newer than the 0.119.4+1.21.4 pinned above silently replaces it and Fabric Loader aborts the
+	// boot before the window exists. architectury-fabric 16.1.4 does exactly that: it
+	// asks for 0.119.5+1.21.5 and also drags in fabric-renderer-api-v1 6.0.0+55bce67a07 /
+	// fabric-renderer-indigo 3.0.0+55bce67a07 (both demand >=1.21.5-beta.1):
+	//   [FabricLoader/Resolution] Immediate reason: [HARD_DEP architectury 16.1.4
+	//     {depends fabric-api @ [>=0.100.0]},
+	//     HARD_DEP_INCOMPATIBLE_PRESELECTED fabric-api 0.119.5+1.21.5
+	//     {depends minecraft @ [>=1.21.5- <1.21.6-)}, ROOT_FORCELOAD_SINGLE architectury 16.1.4]
+	//   [FabricLoader/ERROR] Incompatible mods found!
+	// gradle.properties now pins architectury_api_version=15.0.3, whose fabric-api request
+	// (0.110.5+1.21.4) is BELOW the pin, so the port's own fabric-api wins on its own and no
+	// override is needed here. That is also the version whose own mixins run on 1.21.4 - 16.x is a
+	// 1.21.5 build mislabelled "~1.21.4-" and hard-crashes in Blocks.<clinit>; see gradle.properties.
+	//
+	// If this ever needs defending mechanically rather than by version choice, the options are:
+	//  - `modImplementation(...) { force = true }` no longer exists. javap on Gradle 9.4.1
+	//    (gradle-core-api-9.4.1.jar / gradle-dependency-management-9.4.1.jar) shows
+	//    AbstractExternalModuleDependency has only `isForce()` and no `setForce(...)`, so the Groovy
+	//    DSL form dies with "Could not set unknown property 'force'". It was removed in Gradle 9.
+	//  - `configurations.matching { it.name.startsWith('mod') }.configureEach {
+	//     resolutionStrategy.force ... }` works, but it has to name Loom's internal configurations,
+	//    which are not API. They differ between Loom lines (this tree went 1.7.435 -> 1.17.493, see
+	//    settings.gradle), so the list is a moving target and a name that silently stops resolving
+	//    reintroduces the bug with no compile error.
+	//  - `exclude group: 'net.fabricmc.fabric-api'` on the declaration below is the position
+	//    independent one - it drops the offending EDGE, so it holds for every configuration the
+	//    project resolves, present and future, including the modCompileClasspath / modLocalRuntime /
+	//    productionRuntimeMods that Loom builds internally. It does work - the runClient classpath
+	//    then contains fabric-api-0.119.4+1.21.4.jar - but it was dropped
+	//    again because it only treats the symptom: with architectury 16.1.4 the client then died
+	//    anyway, in Architectury's own MixinFarmBlock, and no exclude on this line can reach that.
+	modImplementation "dev.architectury:architectury-fabric:${project.architectury_api_version}"
+	// javac reads ParCool's own classes from the plain mojmap jar (always in sync with :common, and
+	// immune to Loom's stale remap cache); `modImplementation` supplies the remapped artifact that
+	// the dev run actually loads.
+	compileOnly project(':common')
+	modImplementation project(':common')
+
+	// Upstream uses javax.annotation.Nullable/Nonnull throughout; NeoForge puts JSR-305 on the
+	// compile classpath for free, Loom does not.
+	compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+	compileOnly "com.google.code.gson:gson:2.10.1"
+}
+
+/**
+ * The distributable Fabric jar: the SRG/intermediary-transformed :common artifact plus this
+ * module's own classes, the loader metadata and the ServiceLoader registration.
+ *
+ * architectury-plugin's `neoForge()`/`fabric()` transform normally does this, but the NeoForge side
+ * of that transform requires a Loom extension that cannot set up NeoForge 21.1 (see
+ * neoforge/build.gradle), so the assembly is done explicitly here and mirrored in :neoforge.
+ */
+tasks.withType(Jar).configureEach {
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register('distJar', Jar) {
+	group = 'build'
+	description = 'Assembles the distributable Fabric jar (common + fabric module).'
+
+	archiveClassifier = 'fabric'
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+	// The distributable is built from :common's remapJar output, NOT from architectury-plugin's
+	// transformProductionFabric artifact.
+	//
+	// Why: architectury-plugin's transform runs in "named" mode unless the Loom NeoForge extension is
+	// present, and its Fabric half therefore emitted mojmap bytecode - a jar that loads in a mojmap
+	// dev environment and nowhere else. :common:remapJar is Loom's own publish step: it applies the
+	// access widener, converts named -> intermediary and, because Loom 1.17 defaults to
+	// `mixinRemapType = static`, rewrites the mixin targets (both the annotation strings and the @Shadow
+	// descriptors) straight into the bytecode. That is why there is no refmap: fabric-api 0.141.6, built
+	// with the same Loom, ships none either and advertises
+	// `Fabric-Loom-Mixin-Remap-Type: static` in its manifest.
+	//
+	// Reading the archive inside a `from { }` closure gives Gradle no way to order the two tasks, so
+	// the dependency is declared explicitly.
+	dependsOn ':common:remapJar'
+	dependsOn ':fabric:remapJar'
+
+	// zipTree, not a plain file copy, so the remapped code is expanded into the output jar.
+	//
+	// Order matters, and not only for readability: duplicatesStrategy is EXCLUDE, so the first `from`
+	// that contributes an entry wins.
+	//
+	// This module goes first on purpose. :fabric:remapJar carries the four loader-side classes already
+	// remapped to intermediary (ParCoolFabric, ParCoolFabricClient, FabricParCoolPlatform,
+	// FabricParCoolNetwork) - `sourceSets.main.output` is the raw mojmap output, and shipping it as-is
+	// left FabricParCoolPlatform referencing net.minecraft.core.BlockPos and FabricParCoolNetwork
+	// referencing net.minecraft.network.codec.StreamCodec in a jar meant for an intermediary client.
+	//
+	// It also carries the authoritative access widener, remapped to `v2 intermediary`. :common:remapJar
+	// leaves the access widener in `v2 named` (its namespacesMatch() is true, so Loom copies it
+	// verbatim), and Fabric Loader 0.19.5 refuses that outright on a production client:
+	//     ClassTweakerFormatException: line 1: Namespace (named) does not match current runtime
+	//     namespace (intermediary)
+	// which aborts the boot before the game window exists. So the common copy is dropped below.
+	from({
+		zipTree(tasks.named('remapJar').get().archiveFile.get().asFile)
+	})
+
+	// The remapped :common code, which :fabric:remapJar does not contain (the module compiles against
+	// it with `compileOnly project(':common')`, so the common classes are not in its own output).
+	from({
+		zipTree(project(':common').tasks.named('remapJar').get().archiveFile.get().asFile)
+	}) {
+		exclude 'parcool.accesswidener'
+	}
+	from(configurations.runtimeClasspath.findAll { it.name.endsWith('.jar') }.collect { zipTree(it) }) {
+		include 'META-INF/services/com.alrex.parcool.platform.ParCoolPlatform'
+	}
+
+	manifest {
+		attributes(
+				'Implementation-Title': project.mod_name,
+				'Implementation-Version': project.mod_version,
+				'Implementation-Vendor': project.mod_authors
+		)
+	}
+}
+
+tasks.named('assemble') {
+	dependsOn 'distJar'
+}

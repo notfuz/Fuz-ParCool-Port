@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "parcool",
+  "version": "${version}",
+  "name": "ParCool!",
+  "description": "This enable us act like parkour players. Enjoy Minecraft with cool actions!",
+  "authors": [
+    "alRex_U (original)",
+    "ParCool Architectury API port"
+  ],
+  "contact": {
+    "homepage": "https://www.curseforge.com/minecraft/mc-mods/parcool",
+    "sources": "https://github.com/alRex-U/ParCool",
+    "issues": "https://github.com/alRex-U/ParCool/issues"
+  },
+  "license": "LGPL-3.0",
+  "icon": "parcool_logo.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.alrex.parcool.ParCoolFabric"
+    ],
+    "client": [
+      "com.alrex.parcool.ParCoolFabricClient"
+    ]
+  },
+  "mixins": [
+    "parcool-common.mixins.json"
+  ],
+  "accessWidener": "parcool.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "architectury": ">=15.0.3"
+  },
+  "custom": {
+    "mixinextras": {
+      "required": false
+    }
+  },
+  "suggests": {
+    "patchouli": "*",
+    "shouldersurfing": "*"
+  }
+}

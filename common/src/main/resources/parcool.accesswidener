@@ -1,0 +1,29 @@
+accessWidener v2 named
+
+# NeoForge exposes these via patches/ATs; on Fabric they need widening. Verified against the
+# mojmap 1.21.4 jar.
+accessible field net/minecraft/world/entity/LivingEntity swimAmount F
+accessible field net/minecraft/world/entity/LivingEntity swimAmountO F
+accessible field net/minecraft/world/entity/Entity onGround Z
+
+# NeoForge exposes ArgumentTypeInfos.registerByClass; vanilla keeps the equivalent private.
+accessible method net/minecraft/commands/synchronization/ArgumentTypeInfos register (Lnet/minecraft/core/Registry;Ljava/lang/String;Ljava/lang/Class;Lnet/minecraft/commands/synchronization/ArgumentTypeInfo;)Lnet/minecraft/commands/synchronization/ArgumentTypeInfo;
+
+# NeoForge widens these; ParCool calls them directly.
+accessible method net/minecraft/world/entity/player/Player canPlayerFitWithinBlocksAndEntitiesWhen (Lnet/minecraft/world/entity/Pose;)Z
+accessible method net/minecraft/world/level/storage/LevelResource <init> (Ljava/lang/String;)V
+
+# The zipline rope needs its own render types: the rope emits POSITION_COLOR_LIGHTMAP in QUADS and
+# has a culled and an unculled variant (the Enable3DRenderingForZipline config switch), which no
+# vanilla pipeline matches. 1.21.4 still uses the RenderStateShard model, so building the composite
+# state means touching RenderStateShard's shards and RenderType's factory - and 1.21.4 tightened both:
+# `RenderType.create(String, VertexFormat, Mode, int, boolean, boolean, CompositeState)` is now
+# private (1.21.1 still had a package-private five-argument overload that did the same job), and the
+# shards are `protected` rather than public. The NeoForge side gets the same five fields and the same
+# factory through neoforge/src/main/resources/META-INF/accesstransformer.cfg.
+accessible method net/minecraft/client/renderer/RenderType create (Ljava/lang/String;Lcom/mojang/blaze3d/vertex/VertexFormat;Lcom/mojang/blaze3d/vertex/VertexFormat$Mode;IZZLnet/minecraft/client/renderer/RenderType$CompositeState;)Lnet/minecraft/client/renderer/RenderType$CompositeRenderType;
+accessible field net/minecraft/client/renderer/RenderStateShard NO_TEXTURE Lnet/minecraft/client/renderer/RenderStateShard$EmptyTextureStateShard;
+accessible field net/minecraft/client/renderer/RenderStateShard CULL Lnet/minecraft/client/renderer/RenderStateShard$CullStateShard;
+accessible field net/minecraft/client/renderer/RenderStateShard NO_CULL Lnet/minecraft/client/renderer/RenderStateShard$CullStateShard;
+accessible field net/minecraft/client/renderer/RenderStateShard LIGHTMAP Lnet/minecraft/client/renderer/RenderStateShard$LightmapStateShard;
+accessible field net/minecraft/client/renderer/RenderStateShard RENDERTYPE_LEASH_SHADER Lnet/minecraft/client/renderer/RenderStateShard$ShaderStateShard;

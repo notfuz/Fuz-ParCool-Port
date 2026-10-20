@@ -1,0 +1,41 @@
+{
+  "required": true,
+  "package": "com.alrex.parcool.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "client.CameraAnglesMixin",
+    "client.ClientPacketListenerMixin",
+    "client.ClientWorldMixin",
+    "client.GameRendererTickMixin",
+    "client.ItemTintSourcesAccessor",
+    "client.KeyMappingMixin",
+    "client.KeyboardInputMixin",
+    "client.LivingRendererMixin",
+    "client.LocalPlayerMixin",
+    "client.MinecraftInputMixin",
+    "client.OptionsMixin",
+    "client.PlayerModelMixin",
+    "client.PlayerRendererMixin",
+    "client.PlayerRenderStateEntityMixin",
+    "client.PlayerRenderStateExtractorMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixins": [
+    "common.ArgumentTypeInfosMixin",
+    "common.BlockEntityTypeInvoker",
+    "common.EntityMixin",
+    "common.LevelChunkMixin",
+    "common.LivingEntityFallMixin",
+    "common.LivingEntityJumpMixin",
+    "common.LivingEntityMixin",
+    "common.ParCoolDataHolderMixin",
+    "common.ParCoolDataPersistenceMixin",
+    "common.PlayerAttributesMixin",
+    "common.PlayerForcedPoseMixin",
+    "common.PlayerInteractionVisibilityMixin",
+    "common.PlayerMixin",
+    "common.PotionBrewingBuilderMixin"
+  ]
+}

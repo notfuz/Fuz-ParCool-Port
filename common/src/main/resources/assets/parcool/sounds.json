@@ -1,0 +1,216 @@
+{
+  "action.vault": {
+    "subtitle": "parcool.sound.vault.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:grabbing",
+        "volume": 0.7,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.v_wall_run": {
+    "subtitle": "parcool.sound.v_wall_run.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:wallrun_and_running",
+        "volume": 0.85,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.h_wall_run": {
+    "subtitle": "parcool.sound.h_wall_run.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:wallrun_and_running",
+        "volume": 0.85,
+        "pitch": 0.7
+      }
+    ]
+  },
+  "action.breakfall.just": {
+    "subtitle": "parcool.sound.breakfall.just.subtitle",
+    "sounds": [
+      {
+        "name": "minecraft:random/anvil_land",
+        "volume": 0.65,
+        "pitch": 2
+      }
+    ]
+  },
+  "action.breakfall.roll": {
+    "subtitle": "parcool.sound.breakfall.roll.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:landing",
+        "volume": 0.40,
+        "pitch": 0.7
+      }
+    ]
+  },
+  "action.breakfall.tap": {
+    "subtitle": "parcool.sound.breakfall.tap.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:landing",
+        "volume": 0.40,
+        "pitch": 0.7
+      }
+    ]
+  },
+  "action.charge_jump": {
+    "subtitle": "parcool.sound.charge_jump.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:jumping",
+        "volume": 0.35,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.catleap": {
+    "subtitle": "parcool.sound.catleap.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:jumping",
+        "volume": 0.4,
+        "pitch": 0.7
+      }
+    ]
+  },
+  "action.wall_jump": {
+    "subtitle": "parcool.sound.wall_jump.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:jumping",
+        "volume": 0.2,
+        "pitch": 0.7
+      }
+    ]
+  },
+  "action.cling_to_cliff.grab": {
+    "subtitle": "parcool.sound.cling_to_cliff.grab.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:grabbing",
+        "volume": 0.8,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.cling_to_cliff.jump": {
+    "subtitle": "parcool.sound.cling_to_cliff.jump.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:jumping",
+        "volume": 0.2,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.hang_down.grab": {
+    "subtitle": "parcool.sound.hang_down.grab.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:grabbing",
+        "volume": 0.75,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.hang_down.jump": {
+    "subtitle": "parcool.sound.hang_down.jump.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:jumping",
+        "volume": 0.4,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.slide": {
+    "subtitle": "parcool.sound.slide.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:sliding_1",
+        "volume": 0.35,
+        "pitch": 0.6
+      },
+      {
+        "name": "parcool:sliding_2",
+        "volume": 0.35,
+        "pitch": 0.6
+      },
+      {
+        "name": "parcool:sliding_3",
+        "volume": 0.35,
+        "pitch": 0.6
+      }
+    ]
+  },
+  "action.dodge": {
+    "subtitle": "parcool.sound.dodge.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:roll_and_dodge",
+        "volume": 0.35,
+        "pitch": 1
+      }
+    ]
+  },
+  "zipline.set": {
+    "subtitle": "parcool.sound.zipline.set.subtitle",
+    "sounds": [
+      "minecraft:entity/leashknot/place1",
+      "minecraft:entity/leashknot/place2",
+      "minecraft:entity/leashknot/place3"
+    ]
+  },
+  "zipline.remove": {
+    "subtitle": "parcool.sound.zipline.remove.subtitle",
+    "sounds": [
+      "minecraft:mob/sheep/shear"
+    ]
+  },
+  "zipline.ride": {
+    "subtitle": "parcool.sound.zipline.ride.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:zipline_slide",
+        "volume": 1,
+        "stream": false
+      }
+    ]
+  },
+  "parcool.enable": {
+    "subtitle": "parcool.sound.enable_parcool.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:grabbing",
+        "volume": 0.5,
+        "pitch": 1.4
+      },
+      {
+        "name": "parcool:jumping",
+        "volume": 0.3,
+        "pitch": 1.6
+      }
+    ]
+  },
+  "parcool.disable": {
+    "subtitle": "parcool.sound.disable_parcool.subtitle",
+    "sounds": [
+      {
+        "name": "parcool:grabbing",
+        "volume": 0.5,
+        "pitch": 0.7
+      },
+      {
+        "name": "parcool:landing",
+        "volume": 0.3,
+        "pitch": 0.6
+      }
+    ]
+  }
+}
